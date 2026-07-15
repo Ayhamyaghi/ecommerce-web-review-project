@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { loadCart, saveCart, clearCart, isStorageAvailable } from '@/lib/storage';
+import {
+  loadCart,
+  saveCart,
+  clearCart,
+  isStorageAvailable,
+  validateStoredCartData,
+} from '@/lib/storage';
 
 beforeEach(() => {
   localStorage.clear();
@@ -20,13 +26,21 @@ describe('isStorageAvailable', () => {
 });
 
 describe('saveCart and loadCart', () => {
-  it('round-trips cart data', () => {
+  it('round-trips cart data with promotion code', () => {
     const items = [
       { productId: 'p1', quantity: 2 },
       { productId: 'p2', quantity: 1 },
     ];
-    saveCart(items);
-    expect(loadCart()).toEqual(items);
+    saveCart(items, 'SAVE10');
+    const loaded = loadCart();
+    expect(loaded).toEqual({ items, promotionCode: 'SAVE10' });
+  });
+
+  it('round-trips cart data without promotion code', () => {
+    const items = [{ productId: 'p1', quantity: 3 }];
+    saveCart(items, null);
+    const loaded = loadCart();
+    expect(loaded).toEqual({ items, promotionCode: null });
   });
 
   it('returns null when key does not exist', () => {
@@ -46,7 +60,7 @@ describe('saveCart and loadCart', () => {
   it('returns null when items have wrong shape', () => {
     localStorage.setItem(
       'ecommerce-cart',
-      JSON.stringify([{ wrong: 'shape' }]),
+      JSON.stringify({ items: [{ wrong: 'shape' }], promotionCode: null }),
     );
     expect(loadCart()).toBeNull();
   });
@@ -55,14 +69,14 @@ describe('saveCart and loadCart', () => {
     const spy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('QuotaExceededError');
     });
-    expect(() => saveCart([{ productId: 'p1', quantity: 1 }])).not.toThrow();
+    expect(() => saveCart([{ productId: 'p1', quantity: 1 }], null)).not.toThrow();
     spy.mockRestore();
   });
 });
 
 describe('clearCart', () => {
   it('removes the cart key', () => {
-    saveCart([{ productId: 'p1', quantity: 1 }]);
+    saveCart([{ productId: 'p1', quantity: 1 }], null);
     clearCart();
     expect(loadCart()).toBeNull();
   });
@@ -75,5 +89,58 @@ describe('clearCart', () => {
       });
     expect(() => clearCart()).not.toThrow();
     spy.mockRestore();
+  });
+});
+
+describe('validateStoredCartData', () => {
+  it('parses legacy items-only array format', () => {
+    const data = [
+      { productId: 'p1', quantity: 2 },
+      { productId: 'p2', quantity: 1 },
+    ];
+    const result = validateStoredCartData(data);
+    expect(result).toEqual({ items: data, promotionCode: null });
+  });
+
+  it('parses new format with promotion code', () => {
+    const data = {
+      items: [{ productId: 'p1', quantity: 2 }],
+      promotionCode: 'SAVE10',
+    };
+    const result = validateStoredCartData(data);
+    expect(result).toEqual(data);
+  });
+
+  it('handles new format with null promotion code', () => {
+    const data = {
+      items: [{ productId: 'p1', quantity: 2 }],
+      promotionCode: null,
+    };
+    const result = validateStoredCartData(data);
+    expect(result).toEqual({ items: [{ productId: 'p1', quantity: 2 }], promotionCode: null });
+  });
+
+  it('treats non-string promotionCode as null', () => {
+    const data = {
+      items: [{ productId: 'p1', quantity: 1 }],
+      promotionCode: 123,
+    };
+    const result = validateStoredCartData(data);
+    expect(result?.promotionCode).toBeNull();
+  });
+
+  it('returns null for completely invalid data', () => {
+    expect(validateStoredCartData('garbage')).toBeNull();
+    expect(validateStoredCartData(42)).toBeNull();
+    expect(validateStoredCartData(null)).toBeNull();
+    expect(validateStoredCartData(undefined)).toBeNull();
+  });
+
+  it('returns null when items in new format are invalid', () => {
+    const data = {
+      items: [{ wrong: 'shape' }],
+      promotionCode: 'SAVE10',
+    };
+    expect(validateStoredCartData(data)).toBeNull();
   });
 });

@@ -8,22 +8,42 @@ import {
   useCallback,
   type ReactNode,
 } from 'react';
-import { CartItem, Product } from '@/lib/types';
+import {
+  CartItem,
+  Product,
+  AppliedPromotion,
+  PricingBreakdown,
+  PromotionValidationResult,
+} from '@/lib/types';
 import {
   addItem,
   updateQuantity,
   removeItem,
   reconcileCart,
+  getCartTotal,
 } from '@/lib/cart-utils';
 import { loadCart, saveCart } from '@/lib/storage';
 import { products } from '@/lib/products';
+import {
+  validatePromotion,
+  applyPromotion,
+  revalidatePromotion,
+  calculatePricingBreakdown,
+} from '@/lib/promotions';
+
+interface CartState {
+  items: CartItem[];
+  appliedPromotion: AppliedPromotion | null;
+}
 
 type CartAction =
   | { type: 'ADD_ITEM'; productId: string; quantity: number; stock: number }
   | { type: 'UPDATE_QUANTITY'; productId: string; quantity: number; stock: number }
   | { type: 'REMOVE_ITEM'; productId: string }
-  | { type: 'LOAD_CART'; items: CartItem[] }
-  | { type: 'RESET_CART' };
+  | { type: 'LOAD_CART'; items: CartItem[]; appliedPromotion: AppliedPromotion | null }
+  | { type: 'RESET_CART' }
+  | { type: 'SET_PROMOTION'; appliedPromotion: AppliedPromotion }
+  | { type: 'REMOVE_PROMOTION' };
 
 interface CartContextValue {
   items: CartItem[];
@@ -32,41 +52,78 @@ interface CartContextValue {
   removeFromCart: (productId: string) => void;
   resetCart: () => void;
   itemCount: number;
+  appliedPromotion: AppliedPromotion | null;
+  pricing: PricingBreakdown;
+  applyPromoCode: (code: string) => PromotionValidationResult;
+  removePromotion: () => void;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
 
-function cartReducer(state: CartItem[], action: CartAction): CartItem[] {
+function revalidateAfterCartChange(state: CartState): CartState {
+  if (!state.appliedPromotion) return state;
+  const revalidated = revalidatePromotion(
+    state.appliedPromotion.code,
+    state.items,
+    products,
+  );
+  if (!revalidated) {
+    return { ...state, appliedPromotion: null };
+  }
+  return { ...state, appliedPromotion: revalidated };
+}
+
+function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
-    case 'ADD_ITEM':
-      return addItem(state, action.productId, action.quantity, action.stock);
-    case 'UPDATE_QUANTITY':
-      return updateQuantity(state, action.productId, action.quantity, action.stock);
-    case 'REMOVE_ITEM':
-      return removeItem(state, action.productId);
+    case 'ADD_ITEM': {
+      const items = addItem(state.items, action.productId, action.quantity, action.stock);
+      return revalidateAfterCartChange({ ...state, items });
+    }
+    case 'UPDATE_QUANTITY': {
+      const items = updateQuantity(state.items, action.productId, action.quantity, action.stock);
+      return revalidateAfterCartChange({ ...state, items });
+    }
+    case 'REMOVE_ITEM': {
+      const items = removeItem(state.items, action.productId);
+      return revalidateAfterCartChange({ ...state, items });
+    }
     case 'LOAD_CART':
-      return action.items;
+      return { items: action.items, appliedPromotion: action.appliedPromotion };
     case 'RESET_CART':
-      return [];
+      return { items: [], appliedPromotion: null };
+    case 'SET_PROMOTION':
+      return { ...state, appliedPromotion: action.appliedPromotion };
+    case 'REMOVE_PROMOTION':
+      return { ...state, appliedPromotion: null };
   }
 }
 
+const initialState: CartState = { items: [], appliedPromotion: null };
+
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, dispatch] = useReducer(cartReducer, []);
+  const [state, dispatch] = useReducer(cartReducer, initialState);
 
   // Hydrate from localStorage on mount
   useEffect(() => {
     const stored = loadCart();
     if (stored) {
-      const reconciled = reconcileCart(stored, products);
-      dispatch({ type: 'LOAD_CART', items: reconciled });
+      const reconciled = reconcileCart(stored.items, products);
+      let appliedPromotion: AppliedPromotion | null = null;
+      if (stored.promotionCode) {
+        appliedPromotion = revalidatePromotion(
+          stored.promotionCode,
+          reconciled,
+          products,
+        );
+      }
+      dispatch({ type: 'LOAD_CART', items: reconciled, appliedPromotion });
     }
   }, []);
 
   // Persist to localStorage on change
   useEffect(() => {
-    saveCart(items);
-  }, [items]);
+    saveCart(state.items, state.appliedPromotion?.code ?? null);
+  }, [state.items, state.appliedPromotion]);
 
   const addToCart = useCallback((product: Product, quantity = 1) => {
     dispatch({
@@ -92,10 +149,49 @@ export function CartProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'RESET_CART' });
   }, []);
 
-  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+  const applyPromoCode = useCallback(
+    (code: string): PromotionValidationResult => {
+      const subtotal = getCartTotal(state.items, products);
+      const result = validatePromotion(
+        code,
+        subtotal,
+        state.appliedPromotion?.code ?? null,
+      );
+      if (result.valid && result.promotion) {
+        const applied = applyPromotion(result.promotion, subtotal);
+        dispatch({ type: 'SET_PROMOTION', appliedPromotion: applied });
+      }
+      return result;
+    },
+    [state.items, state.appliedPromotion],
+  );
+
+  const removePromotion = useCallback(() => {
+    dispatch({ type: 'REMOVE_PROMOTION' });
+  }, []);
+
+  const itemCount = state.items.reduce((sum, item) => sum + item.quantity, 0);
+  const pricing = calculatePricingBreakdown(
+    state.items,
+    products,
+    state.appliedPromotion,
+  );
 
   return (
-    <CartContext value={{ items, addToCart, updateItemQuantity, removeFromCart, resetCart, itemCount }}>
+    <CartContext
+      value={{
+        items: state.items,
+        addToCart,
+        updateItemQuantity,
+        removeFromCart,
+        resetCart,
+        itemCount,
+        appliedPromotion: state.appliedPromotion,
+        pricing,
+        applyPromoCode,
+        removePromotion,
+      }}
+    >
       {children}
     </CartContext>
   );

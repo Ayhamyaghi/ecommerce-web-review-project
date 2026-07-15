@@ -27,3 +27,36 @@ export interface FilterState {
   priceRange: { min: number; max: number } | null;
   sort: SortOption;
 }
+
+export interface Promotion {
+  code: string;
+  type: 'percentage' | 'fixed' | 'free-shipping';
+  /** For percentage: discount rate (e.g. 10 = 10%). For fixed: amount in cents. */
+  value: number;
+  /** Minimum cart subtotal in cents required to use this promotion */
+  minSubtotal: number;
+  /** Maximum discount in cents (only applies to percentage type) */
+  maxDiscount: number | null;
+  description: string;
+}
+
+export interface AppliedPromotion {
+  code: string;
+  /** The actual discount amount applied, in cents */
+  discountAmount: number;
+  /** Whether this promotion grants free shipping */
+  freeShipping: boolean;
+}
+
+export interface PricingBreakdown {
+  subtotal: number;
+  discount: number;
+  shipping: number;
+  total: number;
+}
+
+export interface PromotionValidationResult {
+  valid: boolean;
+  message: string;
+  promotion?: Promotion;
+}

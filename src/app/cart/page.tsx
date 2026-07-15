@@ -3,15 +3,12 @@
 import Link from 'next/link';
 import { useCart } from '@/context/CartContext';
 import { getProductById } from '@/lib/products';
-import { getCartTotal } from '@/lib/cart-utils';
-import { products } from '@/lib/products';
 import CartItemRow from '@/components/CartItemRow';
 import CartSummary from '@/components/CartSummary';
 import EmptyState from '@/components/EmptyState';
 
 export default function CartPage() {
-  const { items, itemCount } = useCart();
-  const total = getCartTotal(items, products);
+  const { items, itemCount, pricing } = useCart();
 
   const cartWithProducts = items
     .map((item) => {
@@ -50,7 +47,7 @@ export default function CartPage() {
             ))}
           </div>
           <div>
-            <CartSummary total={total} itemCount={itemCount} />
+            <CartSummary pricing={pricing} itemCount={itemCount} />
             <Link
               href="/"
               className="mt-4 block text-center text-sm text-blue-600 hover:text-blue-800"
