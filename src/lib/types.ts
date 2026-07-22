@@ -93,3 +93,92 @@ export interface ReviewStats {
 }
 
 export type ReviewSortOption = 'newest' | 'oldest' | 'highest' | 'lowest' | 'most-helpful';
+
+// ---- Checkout & Orders ----
+
+export interface CheckoutFormData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  paymentMethod: 'credit_card' | 'debit_card' | 'paypal';
+  cardNumber?: string;
+  cardExpiry?: string;
+  cardCvc?: string;
+}
+
+export interface CheckoutValidationError {
+  field: keyof CheckoutFormData;
+  message: string;
+}
+
+export interface OrderItem {
+  productId: string;
+  name: string;
+  price: number;
+  quantity: number;
+}
+
+export interface Order {
+  id: string;
+  items: OrderItem[];
+  pricing: PricingBreakdown;
+  shippingAddress: {
+    firstName: string;
+    lastName: string;
+    address: string;
+    city: string;
+    state: string;
+    postalCode: string;
+    country: string;
+  };
+  email: string;
+  phone: string;
+  paymentMethod: string;
+  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  createdAt: string;
+}
+
+// ---- Wishlist ----
+
+export interface WishlistItem {
+  productId: string;
+  addedAt: string;
+}
+
+// ---- Product Extensions ----
+
+export type ProductBadge = 'new' | 'sale' | 'bestseller' | 'limited';
+
+export interface ProductWithBadge extends Product {
+  badge?: ProductBadge;
+  tags?: string[];
+}
+
+// ---- API Response Types ----
+
+export interface ApiSuccessResponse<T> {
+  success: true;
+  data: T;
+}
+
+export interface ApiErrorResponse {
+  success: false;
+  error: string;
+  code: string;
+}
+
+export type ApiResponse<T> = ApiSuccessResponse<T> | ApiErrorResponse;
+
+// ---- Pagination ----
+
+export interface PaginationState {
+  page: number;
+  pageSize: number;
+  total: number;
+}

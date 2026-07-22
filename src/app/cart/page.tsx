@@ -46,11 +46,17 @@ export default function CartPage() {
               <CartItemRow key={item.productId} item={item} product={product} />
             ))}
           </div>
-          <div>
+          <div className="space-y-4">
             <CartSummary pricing={pricing} itemCount={itemCount} />
             <Link
+              href="/checkout"
+              className="block w-full rounded-md bg-blue-600 py-3 text-center text-base font-medium text-white hover:bg-blue-700 transition-colors"
+            >
+              Proceed to Checkout
+            </Link>
+            <Link
               href="/"
-              className="mt-4 block text-center text-sm text-blue-600 hover:text-blue-800"
+              className="block text-center text-sm text-blue-600 hover:text-blue-800"
             >
               Continue Shopping
             </Link>

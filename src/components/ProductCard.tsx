@@ -4,18 +4,28 @@ import Link from 'next/link';
 import { Product } from '@/lib/types';
 import { formatPrice } from '@/lib/format';
 import { useCart } from '@/context/CartContext';
+import { useToast } from '@/context/ToastContext';
+import WishlistButton from './WishlistButton';
 
 interface ProductCardProps {
   product: Product;
 }
 
 export default function ProductCard({ product }: ProductCardProps) {
-  const { addToCart } = useCart();
+  const { addToCart, items } = useCart();
+  const { addToast } = useToast();
   const outOfStock = product.stock <= 0;
+  const cartItem = items.find((i) => i.productId === product.id);
+  const atStockLimit = (cartItem?.quantity ?? 0) >= product.stock;
+
+  function handleAddToCart() {
+    addToCart(product);
+    addToast(`${product.name} added to cart`, 'success');
+  }
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white">
-      <Link href={`/products/${product.id}`} className="block">
+    <div className="group flex flex-col overflow-hidden rounded-lg border border-gray-200 bg-white transition-shadow hover:shadow-md">
+      <Link href={`/products/${product.id}`} className="block relative">
         <div className="flex h-48 items-center justify-center bg-gray-100 text-4xl text-gray-300">
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -33,13 +43,26 @@ export default function ProductCard({ product }: ProductCardProps) {
             />
           </svg>
         </div>
+        {outOfStock && (
+          <span className="absolute left-2 top-2 rounded bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">
+            Out of Stock
+          </span>
+        )}
+        {!outOfStock && product.stock <= 5 && (
+          <span className="absolute left-2 top-2 rounded bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
+            Only {product.stock} left
+          </span>
+        )}
+        <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <WishlistButton productId={product.id} />
+        </div>
       </Link>
       <div className="flex flex-1 flex-col p-4">
-        <span className="text-xs font-medium uppercase text-gray-500">
+        <span className="text-xs font-medium uppercase tracking-wide text-gray-400">
           {product.category}
         </span>
         <Link href={`/products/${product.id}`} className="mt-1 block">
-          <h3 className="font-semibold text-gray-900 hover:text-blue-600">
+          <h3 className="font-semibold text-gray-900 hover:text-blue-600 line-clamp-1">
             {product.name}
           </h3>
         </Link>
@@ -50,23 +73,17 @@ export default function ProductCard({ product }: ProductCardProps) {
           <span className="text-lg font-bold text-gray-900">
             {formatPrice(product.price)}
           </span>
-          {outOfStock ? (
-            <span className="text-sm font-medium text-red-500">
-              Out of stock
-            </span>
-          ) : (
-            <span className="text-sm text-gray-500">
-              {product.stock} in stock
-            </span>
-          )}
+          <span className={`text-xs ${outOfStock ? 'text-red-500 font-medium' : 'text-gray-400'}`}>
+            {outOfStock ? 'Unavailable' : `${product.stock} in stock`}
+          </span>
         </div>
         <button
-          onClick={() => addToCart(product)}
-          disabled={outOfStock}
+          onClick={handleAddToCart}
+          disabled={outOfStock || atStockLimit}
           aria-label={`Add ${product.name} to cart`}
-          className="mt-3 w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500"
+          className="mt-3 w-full rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300 disabled:text-gray-500 transition-colors"
         >
-          {outOfStock ? 'Unavailable' : 'Add to Cart'}
+          {outOfStock ? 'Unavailable' : atStockLimit ? 'Stock Limit' : 'Add to Cart'}
         </button>
       </div>
     </div>

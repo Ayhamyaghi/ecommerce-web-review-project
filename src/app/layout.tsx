@@ -1,8 +1,14 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
+import { AuthProvider } from '@/context/AuthContext';
 import { CartProvider } from '@/context/CartContext';
-import Header from '@/components/Header';
+import { WishlistProvider } from '@/context/WishlistContext';
+import { ToastProvider } from '@/context/ToastContext';
+import { ToastContainer } from '@/components/Toast';
+import AppHeader from '@/components/layout/AppHeader';
+import AppFooter from '@/components/layout/AppFooter';
+import ErrorBoundary from '@/components/ui/ErrorBoundary';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -15,25 +21,31 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'ShopWave - E-Commerce Store',
-  description: 'Browse products, filter by category, manage your shopping cart, and read product reviews.',
+  title: {
+    default: 'ShopWave — Quality Products, Fast Delivery',
+    template: '%s | ShopWave',
+  },
+  description: 'Shop quality products across Electronics, Clothing, Home & Kitchen, Books, Sports & Outdoors, and Beauty. Free shipping over $50.',
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-    >
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
       <body className="min-h-full flex flex-col bg-white text-gray-900">
-        <CartProvider>
-          <Header />
-          <main className="flex-1">{children}</main>
-        </CartProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <CartProvider>
+              <WishlistProvider>
+              <ErrorBoundary>
+                <AppHeader />
+                <main id="main-content" className="flex-1">{children}</main>
+                <AppFooter />
+              </ErrorBoundary>
+              <ToastContainer />
+              </WishlistProvider>
+            </CartProvider>
+          </AuthProvider>
+        </ToastProvider>
       </body>
     </html>
   );
