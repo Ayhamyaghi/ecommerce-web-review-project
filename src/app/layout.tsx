@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: 'ShopWave - E-Commerce Store',
-  description: 'Browse products, filter by category, and manage your shopping cart.',
+  description: 'Browse products, filter by category, manage your shopping cart, and read product reviews.',
 };
 
 export default function RootLayout({

@@ -6,6 +6,7 @@ import { getProductById } from '@/lib/products';
 import { formatPrice } from '@/lib/format';
 import { useCart } from '@/context/CartContext';
 import EmptyState from '@/components/EmptyState';
+import { ReviewSection } from '@/components/ReviewSection';
 
 export default function ProductDetailPage({
   params,
@@ -99,6 +100,10 @@ export default function ProductDetailPage({
                 : 'Add to Cart'}
           </button>
         </div>
+      </div>
+
+      <div className="mt-12">
+        <ReviewSection productId={product.id} />
       </div>
     </div>
   );
