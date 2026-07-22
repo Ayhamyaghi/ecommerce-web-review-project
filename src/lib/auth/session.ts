@@ -16,6 +16,8 @@ export function createSession(user: DbUser): DbSession {
   const session: DbSession = { token: generateId() + '-' + generateId(), userId: user.id, expiresAt: new Date(Date.now() + SESSION_DURATION_MS).toISOString() };
   db.sessions.push(session);
   const now = new Date().toISOString();
+  // Prune all expired sessions on every write to keep the store compact,
+  // while always retaining the session that was just created.
   db.sessions = db.sessions.filter(s => s.expiresAt > now || s.token === session.token);
   saveDb(db);
   return session;
