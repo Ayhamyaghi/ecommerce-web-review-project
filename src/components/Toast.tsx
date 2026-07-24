@@ -16,13 +16,20 @@ const TYPE_ICONS: Record<ToastType, string> = {
   info: 'ℹ',
 };
 
+// error and warning use role="alert" (assertive); success and info use role="status" (polite)
+const TYPE_ROLE: Record<ToastType, 'alert' | 'status'> = {
+  success: 'status',
+  error: 'alert',
+  warning: 'alert',
+  info: 'status',
+};
+
 function ToastItem({ toast }: { toast: ToastMessage }) {
   const { removeToast } = useToast();
 
   return (
     <div
-      role="alert"
-      aria-live="assertive"
+      role={TYPE_ROLE[toast.type]}
       className={`flex items-start gap-3 rounded-lg px-4 py-3 shadow-lg text-sm max-w-sm ${TYPE_STYLES[toast.type]}`}
     >
       <span className="font-bold text-base leading-none mt-0.5" aria-hidden="true">
@@ -32,7 +39,7 @@ function ToastItem({ toast }: { toast: ToastMessage }) {
       <button
         onClick={() => removeToast(toast.id)}
         aria-label="Dismiss notification"
-        className="opacity-75 hover:opacity-100 text-base leading-none ml-2"
+        className="opacity-75 hover:opacity-100 text-base leading-none ml-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded"
       >
         ×
       </button>
@@ -47,7 +54,9 @@ export function ToastContainer() {
 
   return (
     <div
+      role="region"
       aria-label="Notifications"
+      aria-live="polite"
       className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2"
     >
       {toasts.map((t) => (
