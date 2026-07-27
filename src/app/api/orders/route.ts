@@ -1,20 +1,11 @@
 import { NextRequest } from 'next/server';
 import { seedDatabase } from '@/lib/db/seed';
-import { handleApiRoute, successResponse, getSessionToken, zodErrorResponse } from '@/lib/api-utils';
+import { handleApiRoute, successResponse, resolveCartSessionId, getSessionToken, zodErrorResponse } from '@/lib/api-utils';
 import { getSessionUser, requireAuth } from '@/lib/auth/session';
 import { checkoutSchema } from '@/lib/schemas/order';
 import { listOrders, checkout } from '@/lib/services/order-service';
 import { AppError } from '@/lib/errors';
 import { ZodError } from 'zod';
-
-function getCartSessionId(request: NextRequest): string {
-  const token = getSessionToken(request);
-  if (token) {
-    const user = getSessionUser(token);
-    if (user) return user.id;
-  }
-  return request.cookies.get('guest_id')?.value || 'guest-default';
-}
 
 export async function GET(request: NextRequest) {
   seedDatabase();
@@ -29,7 +20,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const input = checkoutSchema.parse(body);
-    const sessionId = getCartSessionId(request);
+    const sessionId = resolveCartSessionId(request, getSessionUser);
     const token = getSessionToken(request);
     const user = getSessionUser(token);
     const userId = user?.id ?? null;

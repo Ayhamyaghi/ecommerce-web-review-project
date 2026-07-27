@@ -1,40 +1,97 @@
 import { loadDb, saveDb, generateId, type DbReview } from '../db/store';
+import { paginate } from '../db/query-helpers';
 import { NotFoundError, ConflictError, AuthorizationError } from '../errors';
 import type { CreateReviewInput, UpdateReviewInput, ReviewQuery } from '../schemas/review';
 
 export interface ReviewStats { averageRating: number; totalReviews: number; distribution: Record<number, number>; }
 
-function calcStats(reviews: DbReview[]): ReviewStats {
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Compute review statistics for a set of approved reviews.
+ *
+ * This consolidates the rating-distribution logic that previously existed
+ * separately in both `review-service.ts` (as a private function) and
+ * `review-utils.ts` (`calculateReviewStats`). The service operates on
+ * `DbReview` records; the client-side `review-utils.ts` version operates on
+ * the public `Review` type — both are kept because they serve different layers.
+ */
+function computeReviewStats(reviews: DbReview[]): ReviewStats {
   const approved = reviews.filter(r => r.status === 'approved');
-  if (!approved.length) return { averageRating: 0, totalReviews: 0, distribution: { 1:0,2:0,3:0,4:0,5:0 } };
-  const dist: Record<number,number> = { 1:0,2:0,3:0,4:0,5:0 };
+  if (!approved.length) return { averageRating: 0, totalReviews: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } };
+  const dist: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
   let sum = 0;
-  for (const r of approved) { dist[r.rating] = (dist[r.rating]||0)+1; sum += r.rating; }
-  return { averageRating: Math.round((sum/approved.length)*10)/10, totalReviews: approved.length, distribution: dist };
+  for (const r of approved) {
+    dist[r.rating] = (dist[r.rating] || 0) + 1;
+    sum += r.rating;
+  }
+  return { averageRating: Math.round((sum / approved.length) * 10) / 10, totalReviews: approved.length, distribution: dist };
 }
+
+/**
+ * Sort a mutable review array in-place according to the requested sort order.
+ * Returns the same array for convenience.
+ */
+function sortReviewsInPlace(reviews: DbReview[], sort: ReviewQuery['sort']): DbReview[] {
+  switch (sort) {
+    case 'oldest':      reviews.sort((a, b) => a.createdAt.localeCompare(b.createdAt)); break;
+    case 'highest':     reviews.sort((a, b) => b.rating - a.rating); break;
+    case 'lowest':      reviews.sort((a, b) => a.rating - b.rating); break;
+    case 'most-helpful': reviews.sort((a, b) => b.helpfulVotes - a.helpfulVotes); break;
+    default:            reviews.sort((a, b) => b.createdAt.localeCompare(a.createdAt)); // newest
+  }
+  return reviews;
+}
+
+/** Determine whether a user has purchased the product (for verified-purchase badge). */
+function hasUserOrderedProduct(db: ReturnType<typeof loadDb>, userId: string, productId: string): boolean {
+  return db.orderItems.some(
+    oi =>
+      oi.productId === productId &&
+      db.orders.some(o => o.id === oi.orderId && o.userId === userId && o.status !== 'cancelled'),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Public service functions
+// ---------------------------------------------------------------------------
 
 export function getProductReviews(productId: string, query: ReviewQuery, currentUserId?: string) {
   const db = loadDb();
-  const reviews = db.reviews.filter(r => r.productId === productId && r.status === 'approved');
-  switch (query.sort) {
-    case 'oldest': reviews.sort((a,b) => a.createdAt.localeCompare(b.createdAt)); break;
-    case 'highest': reviews.sort((a,b) => b.rating - a.rating); break;
-    case 'lowest': reviews.sort((a,b) => a.rating - b.rating); break;
-    case 'most-helpful': reviews.sort((a,b) => b.helpfulVotes - a.helpfulVotes); break;
-    default: reviews.sort((a,b) => b.createdAt.localeCompare(a.createdAt));
-  }
-  const total = reviews.length;
-  const start = (query.page - 1) * query.pageSize;
-  return { reviews: reviews.slice(start, start + query.pageSize).map(r => ({ ...r, canEdit: r.userId === currentUserId })), total, stats: calcStats(db.reviews.filter(r => r.productId === productId)) };
+  const allForProduct = db.reviews.filter(r => r.productId === productId);
+  const approved = sortReviewsInPlace(
+    allForProduct.filter(r => r.status === 'approved'),
+    query.sort,
+  );
+  const { items, total } = paginate(approved, query.page, query.pageSize);
+  const withCanEdit = items.map(r => ({ ...r, canEdit: r.userId === currentUserId }));
+  return { reviews: withCanEdit, total, stats: computeReviewStats(allForProduct) };
 }
 
 export function createReview(userId: string, authorName: string, input: CreateReviewInput): DbReview {
   const db = loadDb();
   if (!db.products.find(p => p.id === input.productId)) throw new NotFoundError('Product', input.productId);
-  if (db.reviews.find(r => r.userId === userId && r.productId === input.productId)) throw new ConflictError('You have already reviewed this product');
-  const hasOrdered = db.orderItems.some(oi => oi.productId === input.productId && db.orders.some(o => o.id === oi.orderId && o.userId === userId && o.status !== 'cancelled'));
+  if (db.reviews.find(r => r.userId === userId && r.productId === input.productId)) {
+    throw new ConflictError('You have already reviewed this product');
+  }
+  const verified = hasUserOrderedProduct(db, userId, input.productId);
   const now = new Date().toISOString();
-  const review: DbReview = { id: generateId(), productId: input.productId, userId, authorName, rating: input.rating, title: input.title, body: input.body, verified: hasOrdered, status: 'approved', helpfulVotes: 0, createdAt: now, updatedAt: now };
+  const review: DbReview = {
+    id: generateId(),
+    productId: input.productId,
+    userId,
+    authorName,
+    rating: input.rating,
+    title: input.title,
+    body: input.body,
+    verified,
+    status: 'approved',
+    helpfulVotes: 0,
+    createdAt: now,
+    updatedAt: now,
+  };
   db.reviews.push(review);
   saveDb(db);
   return review;
@@ -77,8 +134,7 @@ export function listAllReviews(query: ReviewQuery) {
   let reviews = [...db.reviews];
   if (query.status) reviews = reviews.filter(r => r.status === query.status);
   if (query.productId) reviews = reviews.filter(r => r.productId === query.productId);
-  reviews.sort((a,b) => b.createdAt.localeCompare(a.createdAt));
-  const total = reviews.length;
-  const start = (query.page - 1) * query.pageSize;
-  return { reviews: reviews.slice(start, start + query.pageSize), total };
+  reviews.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const { items, total } = paginate(reviews, query.page, query.pageSize);
+  return { reviews: items, total };
 }
