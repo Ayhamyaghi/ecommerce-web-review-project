@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
 import { seedDatabase } from '@/lib/db/seed';
-import { handleApiRoute, getSessionToken } from '@/lib/api-utils';
+import { handleApiRoute, getSessionToken, errorResponse } from '@/lib/api-utils';
 import { getSessionUser, requireAuth } from '@/lib/auth/session';
 import { reviewQuerySchema, createReviewSchema } from '@/lib/schemas/review';
 import { getProductReviews, listAllReviews, createReview } from '@/lib/services/review-service';
+import { ValidationError } from '@/lib/errors';
 
 export async function GET(request: NextRequest) {
   seedDatabase();
@@ -24,9 +25,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   seedDatabase();
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(new ValidationError('Request body must be valid JSON'));
+  }
+
   return handleApiRoute(async () => {
     const user = await requireAuth();
-    const body = await request.json();
     const input = createReviewSchema.parse(body);
     return createReview(user.id, user.name, input);
   });

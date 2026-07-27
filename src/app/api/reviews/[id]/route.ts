@@ -1,9 +1,10 @@
 import { NextRequest } from 'next/server';
 import { seedDatabase } from '@/lib/db/seed';
-import { handleApiRoute, getSessionToken } from '@/lib/api-utils';
+import { handleApiRoute, getSessionToken, errorResponse } from '@/lib/api-utils';
 import { getSessionUser, requireAuth } from '@/lib/auth/session';
 import { updateReviewSchema } from '@/lib/schemas/review';
 import { updateReview, deleteReview } from '@/lib/services/review-service';
+import { ValidationError } from '@/lib/errors';
 
 export async function PUT(
   request: NextRequest,
@@ -11,17 +12,23 @@ export async function PUT(
 ) {
   seedDatabase();
   const { id } = await params;
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return errorResponse(new ValidationError('Request body must be valid JSON'));
+  }
+
   return handleApiRoute(async () => {
     const token = getSessionToken(request);
     const user = getSessionUser(token);
     const isAdmin = user?.role === 'ADMIN';
     if (!isAdmin) {
       const authedUser = await requireAuth();
-      const body = await request.json();
       const input = updateReviewSchema.parse(body);
       return updateReview(id, authedUser.id, input, false);
     }
-    const body = await request.json();
     const input = updateReviewSchema.parse(body);
     return updateReview(id, user!.id, input, true);
   });

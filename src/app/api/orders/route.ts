@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
 import { seedDatabase } from '@/lib/db/seed';
-import { handleApiRoute, successResponse, getSessionToken, zodErrorResponse } from '@/lib/api-utils';
+import { handleApiRoute, successResponse, getSessionToken, zodErrorResponse, errorResponse } from '@/lib/api-utils';
 import { getSessionUser, requireAuth } from '@/lib/auth/session';
 import { checkoutSchema } from '@/lib/schemas/order';
 import { listOrders, checkout } from '@/lib/services/order-service';
-import { AppError } from '@/lib/errors';
+import { AppError, ValidationError } from '@/lib/errors';
 import { ZodError } from 'zod';
 
 function getCartSessionId(request: NextRequest): string {
@@ -26,8 +26,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   seedDatabase();
+
+  let body: unknown;
   try {
-    const body = await request.json();
+    body = await request.json();
+  } catch {
+    return errorResponse(new ValidationError('Request body must be valid JSON'));
+  }
+
+  try {
     const input = checkoutSchema.parse(body);
     const sessionId = getCartSessionId(request);
     const token = getSessionToken(request);
@@ -37,13 +44,10 @@ export async function POST(request: NextRequest) {
     return successResponse(result, 201);
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err);
-    if (err instanceof AppError)
-      return Response.json(
-        { success: false, error: { code: err.code, message: err.message } },
-        { status: err.statusCode },
-      );
+    if (err instanceof AppError) return errorResponse(err);
+    console.error('Unhandled checkout error:', err);
     return Response.json(
-      { success: false, error: { code: 'INTERNAL_ERROR', message: 'An error occurred' } },
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } },
       { status: 500 },
     );
   }
