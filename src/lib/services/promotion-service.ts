@@ -1,9 +1,14 @@
 import { loadDb, saveDb, generateId, type DbPromotion } from '../db/store';
 import { NotFoundError, ConflictError } from '../errors';
 import type { CreatePromotionInput } from '../schemas/promotion';
+import { calculateDiscountAmount, promotionGrantsFreeShipping } from './pricing-helpers';
 
 export interface PromotionValidationResult { valid: boolean; message: string; promotion?: DbPromotion; discount?: number; freeShipping?: boolean; }
 
+/**
+ * Validate a promotion code against business rules and, when valid, compute
+ * the resulting discount amounts using the shared pricing helpers.
+ */
 export function validatePromotionCode(code: string, subtotal: number): PromotionValidationResult {
   const db = loadDb();
   const promo = db.promotions.find(p => p.code.toUpperCase() === code.toUpperCase());
@@ -14,10 +19,8 @@ export function validatePromotionCode(code: string, subtotal: number): Promotion
   if (new Date(promo.expiresAt) < now) return { valid: false, message: 'This promotion has expired' };
   if (promo.usageLimit && promo.usageCount >= promo.usageLimit) return { valid: false, message: 'This promotion has reached its usage limit' };
   if (subtotal < promo.minOrderAmount) return { valid: false, message: `Minimum order of $${(promo.minOrderAmount/100).toFixed(2)} required` };
-  let discount = 0, freeShipping = false;
-  if (promo.type === 'percentage') { discount = Math.round(subtotal * (promo.value / 100)); if (promo.maxDiscount) discount = Math.min(discount, promo.maxDiscount); }
-  else if (promo.type === 'fixed') discount = promo.value;
-  else if (promo.type === 'free_shipping') freeShipping = true;
+  const discount = calculateDiscountAmount(promo, subtotal);
+  const freeShipping = promotionGrantsFreeShipping(promo);
   return { valid: true, message: promo.description, promotion: promo, discount, freeShipping };
 }
 

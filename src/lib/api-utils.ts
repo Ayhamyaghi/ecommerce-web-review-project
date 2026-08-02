@@ -78,3 +78,29 @@ export async function handleApiRoute<T>(
 export function getSessionToken(request: NextRequest): string | null {
   return request.cookies.get('session')?.value ?? null;
 }
+
+/**
+ * Resolve the cart session ID for a request.
+ *
+ * Authenticated users are keyed by their user ID so their cart persists
+ * across sessions. Guests are keyed by a cookie value, falling back to a
+ * static default when the cookie is absent.
+ *
+ * Accepts a `getUser` callback so callers can supply the session-lookup
+ * function without creating a circular import from this module into
+ * auth/session.  Typical usage:
+ *
+ *   import { getSessionUser } from '@/lib/auth/session';
+ *   const sessionId = resolveCartSessionId(request, getSessionUser);
+ */
+export function resolveCartSessionId(
+  request: NextRequest,
+  getUser: (token: string | null) => { id: string } | null,
+): string {
+  const token = getSessionToken(request);
+  if (token) {
+    const user = getUser(token);
+    if (user) return user.id;
+  }
+  return request.cookies.get('guest_id')?.value || 'guest-default';
+}
