@@ -1,15 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { seedDatabase } from '@/lib/db/seed';
-import { zodErrorResponse } from '@/lib/api-utils';
+import { zodErrorResponse, errorResponse } from '@/lib/api-utils';
 import { registerSchema } from '@/lib/schemas/auth';
 import { registerUser } from '@/lib/services/auth-service';
-import { AppError } from '@/lib/errors';
+import { AppError, ValidationError } from '@/lib/errors';
 import { ZodError } from 'zod';
 
 export async function POST(request: NextRequest) {
   seedDatabase();
+
+  let body: unknown;
   try {
-    const body = await request.json();
+    body = await request.json();
+  } catch {
+    return errorResponse(new ValidationError('Request body must be valid JSON'));
+  }
+
+  try {
     const input = registerSchema.parse(body);
     const result = registerUser(input);
     const response = NextResponse.json({ success: true, data: result.user }, { status: 201 });
@@ -22,13 +29,10 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (err) {
     if (err instanceof ZodError) return zodErrorResponse(err);
-    if (err instanceof AppError)
-      return Response.json(
-        { success: false, error: { code: err.code, message: err.message } },
-        { status: err.statusCode },
-      );
+    if (err instanceof AppError) return errorResponse(err);
+    console.error('Unhandled register error:', err);
     return Response.json(
-      { success: false, error: { code: 'INTERNAL_ERROR', message: 'An error occurred' } },
+      { success: false, error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } },
       { status: 500 },
     );
   }

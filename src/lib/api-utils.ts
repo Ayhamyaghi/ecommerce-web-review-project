@@ -78,3 +78,29 @@ export async function handleApiRoute<T>(
 export function getSessionToken(request: NextRequest): string | null {
   return request.cookies.get('session')?.value ?? null;
 }
+
+/**
+ * Parses the JSON body of a request.
+ * Returns `{ ok: true, body }` on success, or `{ ok: false, response }` with
+ * a 400 VALIDATION_ERROR response when the body is not valid JSON.
+ */
+export async function parseJsonBody(
+  request: Request,
+): Promise<{ ok: true; body: unknown } | { ok: false; response: Response }> {
+  try {
+    const body = await request.json();
+    return { ok: true, body };
+  } catch {
+    const response: Response = Response.json(
+      {
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Request body must be valid JSON',
+        },
+      } satisfies ApiErrorBody,
+      { status: 400 },
+    );
+    return { ok: false, response };
+  }
+}
